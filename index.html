@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monthly Work Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Libraries for PDF and Chart Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .table-cell {
+            padding: 12px 16px;
+            border-bottom: 1px solid #374151; /* gray-700 */
+            vertical-align: middle;
+        }
+        .table-header {
+            background-color: #1F2937; /* gray-800 */
+            color: #D1D5DB; /* gray-300 */
+            font-weight: 600;
+            text-align: left;
+        }
+        .summary-card {
+            background-color: #1F2937; /* gray-800 */
+            border-radius: 0.5rem;
+            padding: 1rem;
+            text-align: center;
+        }
+        .form-input, .form-select, .form-textarea {
+            background-color: #374151; /* gray-700 */
+            border: 1px solid #4B5563; /* gray-600 */
+            color: #F3F4F6; /* gray-100 */
+            border-radius: 0.375rem;
+            padding: 0.5rem 0.75rem;
+            width: 100%;
+        }
+        .form-textarea {
+            resize: vertical;
+        }
+        .form-input:focus, .form-select:focus, .form-textarea:focus {
+            outline: none;
+            border-color: #3B82F6; /* blue-500 */
+            box-shadow: 0 0 0 2px #1E40AF; /* blue-500 with opacity */
+        }
+        .action-btn {
+            color: white;
+            border: none;
+            border-radius: 0.375rem;
+            padding: 0.5rem 0.75rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-weight: 500;
+        }
+        .delete-btn {
+            background-color: #DC2626; /* red-600 */
+        }
+        .delete-btn:hover {
+            background-color: #B91C1C; /* red-700 */
+        }
+        .archive-btn {
+            background-color: #F59E0B; /* amber-500 */
+        }
+        .archive-btn:hover {
+             background-color: #D97706; /* amber-600 */
+        }
+        .restore-btn {
+            background-color: #10B981; /* green-500 */
+        }
+        .restore-btn:hover {
+            background-color: #059669; /* green-600 */
+        }
+        .control-btn {
+            background-color: #4B5563; /* gray-600 */
+        }
+        .control-btn:hover {
+            background-color: #6B7280; /* gray-500 */
+        }
+        .control-btn.active {
+            background-color: #3B82F6; /* blue-500 */
+        }
+        .status-select {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-position: left 0.75rem center;
+            background-repeat: no-repeat;
+            background-size: 0.6em 0.6em;
+            padding-left: 1.75rem;
+        }
+        .status-not-started { background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3e%3ccircle cx='10' cy='10' r='10' fill='%236B7280'/%3e%3c/svg%3e"); }
+        .status-in-progress { background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3e%3ccircle cx='10' cy='10' r='10' fill='%23F59E0B'/%3e%3c/svg%3e"); }
+        .status-completed { background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3e%3ccircle cx='10' cy='10' r='10' fill='%2310B981'/%3e%3c/svg%3e"); }
+        
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: #1F2937; /* gray-800 */
+            padding: 2rem;
+            border-radius: 0.5rem;
+            width: 90%;
+            max-width: 500px;
+        }
+        
+        /* Calendar Styles */
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1px;
+            background-color: #374151;
+            border: 1px solid #374151;
+        }
+        .calendar-day-header {
+            text-align: center;
+            padding: 0.5rem;
+            font-weight: 600;
+            color: #D1D5DB;
+            background-color: #1F2937;
+        }
+        .calendar-day {
+            position: relative;
+            background-color: #111827;
+            padding-top: 100%; /* Aspect ratio 1:1 */
+            color: #D1D5DB;
+        }
+        .calendar-day.other-month {
+            color: #4B5563;
+        }
+        .day-number {
+            position: absolute;
+            top: 0.25rem;
+            right: 0.25rem;
+            font-size: 0.75rem;
+        }
+        .task-dots {
+            position: absolute;
+            bottom: 0.25rem;
+            left: 0.25rem;
+            right: 0.25rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+        }
+        .task-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+        .tooltip {
+            visibility: hidden;
+            position: absolute;
+            background-color: #111827;
+            color: #fff;
+            text-align: left;
+            border-radius: 6px;
+            padding: 5px;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -80px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            width: 160px;
+            font-size: 0.75rem;
+            pointer-events: none;
+        }
+        .calendar-day:hover .tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 p-4 sm:p-6 lg:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-white">Monthly Work Tracker</h1>
+            <p class="text-gray-400 mt-1">Track all your motion and graphic design projects in one place. Your data is saved automatically in your browser.</p>
+        </header>
+
+        <!-- Main Task Table -->
+        <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden mb-8">
+            <div class="overflow-x-auto">
+                <table class="w-full" id="taskTable">
+                    <thead>
+                        <tr class="table-header">
+                            <th class="table-cell w-px">S.N.</th>
+                            <th class="table-cell w-2/12">File Name</th>
+                            <th class="table-cell w-2/12">Client/Project</th>
+                            <th class="table-cell w-2/12">Category</th>
+                            <th class="table-cell w-1/12">Status</th>
+                            <th class="table-cell w-1/12">Added</th>
+                            <th class="table-cell w-1/12">Deadline</th>
+                            <th class="table-cell w-2/12">Notes</th>
+                            <th class="table-cell w-1/12">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="taskTableBody">
+                        <!-- Rows will be loaded from localStorage by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="flex flex-wrap justify-between items-center mb-8 gap-4">
+            <div class="flex flex-wrap gap-2">
+                <button id="addRowBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                    + Add New Task
+                </button>
+                <button id="manageCategoriesBtn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                    Manage Categories
+                </button>
+                 <button id="clearDataBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                    Clear All Data
+                </button>
+            </div>
+            <div class="flex items-center gap-2">
+                 <label for="importFile" class="action-btn control-btn cursor-pointer">Import from CSV</label>
+                 <input type="file" id="importFile" class="hidden" accept=".csv">
+                 <span class="text-gray-400 text-sm font-medium">Export as:</span>
+                 <button id="exportExcelBtn" class="action-btn control-btn">Excel (CSV)</button>
+                 <button id="exportDocBtn" class="action-btn control-btn">DOC</button>
+                 <button id="exportPdfBtn" class="action-btn control-btn">PDF</button>
+            </div>
+        </div>
+
+        <!-- Summary Section -->
+        <div class="mb-8">
+            <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
+                 <h2 class="text-2xl font-bold text-white">Category Summary</h2>
+                 <div id="filterControls" class="flex items-center gap-2">
+                    <span class="text-gray-400 text-sm font-medium">Filter by:</span>
+                    <button data-filter="all" class="action-btn control-btn filter-btn active">All Tasks</button>
+                    <button data-filter="upcoming" class="action-btn control-btn filter-btn">Upcoming Deadlines</button>
+                    <button data-filter="completed" class="action-btn control-btn filter-btn">Completed</button>
+                </div>
+            </div>
+            <div id="summaryGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4">
+                <!-- Summary cards will be generated by JavaScript -->
+            </div>
+        </div>
+        
+        <!-- Visual Summary Section -->
+        <div class="grid lg:grid-cols-2 gap-8 mb-8">
+            <div>
+                <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
+                    <h2 class="text-2xl font-bold text-white">Visual Summary</h2>
+                    <div id="chartTypeControls" class="flex items-center gap-2">
+                         <button data-chart="bar" class="action-btn control-btn chart-btn active">Bar Chart</button>
+                         <button data-chart="pie" class="action-btn control-btn chart-btn">Pie Chart</button>
+                    </div>
+                </div>
+                <div class="bg-gray-800 rounded-lg shadow-lg p-4 flex justify-center items-center">
+                    <div class="relative h-96 w-full max-w-lg">
+                         <canvas id="workChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
+                    <h2 class="text-2xl font-bold text-white">Deadline Calendar</h2>
+                    <div class="flex items-center gap-2">
+                        <button id="prevMonthBtn" class="action-btn control-btn">&lt;</button>
+                        <span id="currentMonthYear" class="font-semibold"></span>
+                        <button id="nextMonthBtn" class="action-btn control-btn">&gt;</button>
+                    </div>
+                </div>
+                <div class="bg-gray-800 rounded-lg shadow-lg p-4">
+                    <div id="calendarHeaders" class="calendar-grid"></div>
+                    <div id="calendarGrid" class="calendar-grid"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Archived Tasks Section -->
+        <div class="mb-8">
+            <button id="toggleArchiveBtn" class="text-xl font-bold text-white mb-4 w-full text-left bg-gray-800 p-4 rounded-lg">Archived Tasks (0)</button>
+            <div id="archiveSection" class="hidden bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+                 <div class="overflow-x-auto">
+                    <table class="w-full" id="archiveTable">
+                        <thead>
+                            <tr class="table-header">
+                                <th class="table-cell w-2/12">File Name</th>
+                                <th class="table-cell w-2/12">Client/Project</th>
+                                <th class="table-cell w-2/12">Category</th>
+                                <th class="table-cell w-1/12">Status</th>
+                                <th class="table-cell w-1/12">Deadline</th>
+                                <th class="table-cell w-1/12">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="archiveTableBody">
+                            <!-- Archived tasks will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Category Management Modal -->
+    <div id="categoryModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 class="text-2xl font-bold text-white mb-4">Manage Categories</h2>
+            <div id="categoryList" class="space-y-2 mb-4 max-h-60 overflow-y-auto">
+                <!-- Category items will be injected here -->
+            </div>
+            <div class="flex gap-2 mb-4">
+                <input type="text" id="newCategoryInput" class="form-input flex-grow" placeholder="Add new category...">
+                <button id="addCategoryBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Add</button>
+            </div>
+            <button id="closeModalBtn" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg">Save and Close</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // --- ELEMENT SELECTORS ---
+            const taskTableBody = document.getElementById('taskTableBody');
+            const archiveTableBody = document.getElementById('archiveTableBody');
+            const summaryGrid = document.getElementById('summaryGrid');
+            const addRowBtn = document.getElementById('addRowBtn');
+            const clearDataBtn = document.getElementById('clearDataBtn');
+            const exportExcelBtn = document.getElementById('exportExcelBtn');
+            const exportDocBtn = document.getElementById('exportDocBtn');
+            const exportPdfBtn = document.getElementById('exportPdfBtn');
+            const importFile = document.getElementById('importFile');
+            const chartTypeControls = document.getElementById('chartTypeControls');
+            const filterControls = document.getElementById('filterControls');
+            const manageCategoriesBtn = document.getElementById('manageCategoriesBtn');
+            const categoryModal = document.getElementById('categoryModal');
+            const closeModalBtn = document.getElementById('closeModalBtn');
+            const addCategoryBtn = document.getElementById('addCategoryBtn');
+            const newCategoryInput = document.getElementById('newCategoryInput');
+            const categoryList = document.getElementById('categoryList');
+            const calendarGrid = document.getElementById('calendarGrid');
+            const calendarHeaders = document.getElementById('calendarHeaders');
+            const currentMonthYearEl = document.getElementById('currentMonthYear');
+            const prevMonthBtn = document.getElementById('prevMonthBtn');
+            const nextMonthBtn = document.getElementById('nextMonthBtn');
+            const toggleArchiveBtn = document.getElementById('toggleArchiveBtn');
+            const archiveSection = document.getElementById('archiveSection');
+
+            // --- STATE & CONSTANTS ---
+            const tasksStorageKey = 'monthlyWorkTrackerData';
+            const archivedTasksStorageKey = 'monthlyWorkTrackerArchivedData';
+            const categoriesStorageKey = 'monthlyWorkTrackerCategories';
+            const defaultCategories = [
+                "Literature (Lit)", "Pad Design", "Backdrop", "Banner",
+                "Gift Box", "Corporate Motion Design", "Video Edit"
+            ];
+            const statuses = [
+                { text: "Not Started", className: "status-not-started" },
+                { text: "In Progress", className: "status-in-progress" },
+                { text: "Completed", className: "status-completed" }
+            ];
+            let categories = [];
+            let workChart = null;
+            let currentChartType = 'bar';
+            let currentDate = new Date();
+            let currentFilter = 'all';
+
+            // --- CATEGORY MANAGEMENT ---
+            function loadCategories() {
+                const savedCategories = JSON.parse(localStorage.getItem(categoriesStorageKey));
+                categories = savedCategories && savedCategories.length > 0 ? savedCategories : [...defaultCategories];
+            }
+
+            function saveCategories() {
+                localStorage.setItem(categoriesStorageKey, JSON.stringify(categories));
+            }
+
+            function renderCategoriesInModal() {
+                categoryList.innerHTML = '';
+                categories.forEach(cat => {
+                    const div = document.createElement('div');
+                    div.className = 'flex justify-between items-center bg-gray-700 p-2 rounded';
+                    div.innerHTML = `
+                        <span>${cat}</span>
+                        <button data-category="${cat}" class="text-red-400 hover:text-red-500 font-bold text-xl">&times;</button>
+                    `;
+                    categoryList.appendChild(div);
+                });
+            }
+
+            // --- DATA HANDLING ---
+            function saveAllTasks() {
+                localStorage.setItem(tasksStorageKey, JSON.stringify(getTasksFromTable()));
+                updateDashboard();
+            }
+
+            function loadAllTasks() {
+                const activeTasks = JSON.parse(localStorage.getItem(tasksStorageKey)) || [];
+                const archivedTasks = JSON.parse(localStorage.getItem(archivedTasksStorageKey)) || [];
+                
+                taskTableBody.innerHTML = '';
+                if (activeTasks.length > 0) {
+                    activeTasks.forEach(task => createRow(task));
+                } else {
+                    createRow();
+                }
+
+                renderArchivedTasks(archivedTasks);
+                updateDashboard();
+            }
+
+            function getTasksFromTable() {
+                const tasks = [];
+                taskTableBody.querySelectorAll('tr').forEach((row, index) => {
+                    tasks.push({
+                        id: row.dataset.id || Date.now() + index,
+                        fileName: row.querySelector('.file-name-input').value,
+                        clientProject: row.querySelector('.client-project-input').value,
+                        category: row.querySelector('.category-select').value,
+                        status: row.querySelector('.status-select').value,
+                        addedDate: row.querySelector('.added-date-input').value,
+                        deliveryDate: row.querySelector('.delivery-date-input').value,
+                        notes: row.querySelector('.notes-textarea').value
+                    });
+                });
+                return tasks;
+            }
+
+            // --- UI MANIPULATION ---
+            function createRow(taskData = {}) {
+                const rowCount = taskTableBody.rows.length;
+                const newRow = taskTableBody.insertRow(rowCount);
+                newRow.dataset.id = taskData.id || Date.now();
+                const today = new Date().toISOString().split('T')[0];
+                newRow.innerHTML = `
+                    <td class="table-cell text-center">${rowCount + 1}</td>
+                    <td class="table-cell"><input type="text" class="form-input file-name-input" placeholder="File name..." value="${taskData.fileName || ''}" title="${taskData.fileName || ''}"></td>
+                    <td class="table-cell"><input type="text" class="form-input client-project-input" placeholder="Client/Project..." value="${taskData.clientProject || ''}" title="${taskData.clientProject || ''}"></td>
+                    <td class="table-cell">
+                        <select class="form-select category-select">
+                            <option value="" disabled ${!taskData.category ? 'selected' : ''}>Select Category</option>
+                            ${categories.map(cat => `<option ${taskData.category === cat ? 'selected' : ''}>${cat}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td class="table-cell">
+                        <select class="form-select status-select">
+                            ${statuses.map(stat => `<option value="${stat.text}" ${taskData.status === stat.text ? 'selected' : ''}>${stat.text}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td class="table-cell"><input type="date" class="form-input added-date-input" value="${taskData.addedDate || today}"></td>
+                    <td class="table-cell"><input type="date" class="form-input delivery-date-input" value="${taskData.deliveryDate || ''}"></td>
+                    <td class="table-cell"><textarea class="form-textarea notes-textarea" rows="1" placeholder="Notes..." title="${taskData.notes || ''}">${taskData.notes || ''}</textarea></td>
+                    <td class="table-cell">
+                        <div class="flex flex-col gap-1">
+                            <button class="action-btn archive-btn text-xs">Archive</button>
+                            <button class="action-btn delete-btn text-xs">Delete</button>
+                        </div>
+                    </td>
+                `;
+                const statusSelect = newRow.querySelector('.status-select');
+                updateStatusIndicator(statusSelect);
+                statusSelect.addEventListener('change', () => updateStatusIndicator(statusSelect));
+            }
+
+            function updateAllCategoryDropdowns() {
+                const selects = document.querySelectorAll('.category-select');
+                selects.forEach(select => {
+                    const selectedValue = select.value;
+                    select.innerHTML = `
+                        <option value="" disabled>Select Category</option>
+                        ${categories.map(cat => `<option ${selectedValue === cat ? 'selected' : ''}>${cat}</option>`).join('')}
+                    `;
+                    if (!categories.includes(selectedValue)) {
+                        select.value = "";
+                    }
+                });
+            }
+
+            function updateStatusIndicator(selectElement) {
+                const selectedStatus = statuses.find(s => s.text === selectElement.value);
+                selectElement.className = 'form-select status-select'; // Reset classes
+                if (selectedStatus) {
+                    selectElement.classList.add(selectedStatus.className);
+                }
+            }
+
+            function renumberRows() {
+                taskTableBody.querySelectorAll('tr').forEach((row, index) => {
+                    row.cells[0].textContent = index + 1;
+                });
+            }
+
+            // --- DASHBOARD & CHART ---
+            function updateDashboard() {
+                const allTasks = getTasksFromTable();
+                const filteredTasks = filterTasks(allTasks);
+                const counts = countCategories(filteredTasks);
+                renderSummary(counts);
+                renderChart(counts);
+                renderCalendar();
+            }
+
+            function filterTasks(tasks) {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const sevenDaysFromNow = new Date(today);
+                sevenDaysFromNow.setDate(today.getDate() + 7);
+
+                switch (currentFilter) {
+                    case 'completed': return tasks.filter(task => task.status === 'Completed');
+                    case 'upcoming': return tasks.filter(task => {
+                        if (!task.deliveryDate) return false;
+                        const deliveryDate = new Date(task.deliveryDate);
+                        return deliveryDate >= today && deliveryDate <= sevenDaysFromNow;
+                    });
+                    default: return tasks;
+                }
+            }
+            
+            function countCategories(tasks) {
+                const counts = {};
+                categories.forEach(cat => {
+                    counts[cat] = { total: 0, completed: 0, left: 0 };
+                });
+                tasks.forEach(task => {
+                    if (task.category && categories.includes(task.category)) {
+                        counts[task.category].total++;
+                        if (task.status === 'Completed') counts[task.category].completed++;
+                        else counts[task.category].left++;
+                    }
+                });
+                return counts;
+            }
+
+            function renderSummary(counts) {
+                summaryGrid.innerHTML = '';
+                categories.forEach(cat => {
+                    const card = document.createElement('div');
+                    card.className = 'summary-card';
+                    const categoryData = counts[cat];
+                    card.innerHTML = `
+                        <h3 class="text-gray-300 font-semibold text-md truncate">${cat}</h3>
+                        <div class="mt-2"><p class="text-3xl font-bold text-white">${categoryData.total}</p><p class="text-xs text-gray-400">Total Tasks</p></div>
+                        <div class="flex justify-around mt-3 text-sm">
+                            <div><p class="font-bold text-green-400">${categoryData.completed}</p><p class="text-xs text-gray-500">Done</p></div>
+                            <div><p class="font-bold text-yellow-400">${categoryData.left}</p><p class="text-xs text-gray-500">Left</p></div>
+                        </div>`;
+                    summaryGrid.appendChild(card);
+                });
+            }
+
+            function renderChart(data) {
+                const ctx = document.getElementById('workChart').getContext('2d');
+                const labels = Object.keys(data);
+                const values = labels.map(label => data[label].total);
+                if (workChart) workChart.destroy();
+                workChart = new Chart(ctx, {
+                    type: currentChartType,
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Total Tasks',
+                            data: values,
+                            backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6366F1', '#F97316', '#84CC16', '#22D3EE'],
+                            borderColor: '#1F2937',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { position: 'top', labels: { color: '#D1D5DB' } } },
+                        scales: currentChartType === 'bar' ? {
+                            y: { beginAtZero: true, ticks: { color: '#9CA3AF', stepSize: 1 }, grid: { color: '#374151' } },
+                            x: { ticks: { color: '#9CA3AF' }, grid: { color: '#374151' } }
+                        } : {}
+                    }
+                });
+            }
+
+            // --- CALENDAR FUNCTIONS ---
+            function renderCalendar() {
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+
+                currentMonthYearEl.textContent = `${currentDate.toLocaleString('default', { month: 'long' })} ${year}`;
+                calendarGrid.innerHTML = '';
+
+                const firstDayOfMonth = new Date(year, month, 1).getDay();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                
+                const tasks = getTasksFromTable();
+                const tasksByDate = {};
+                tasks.forEach(task => {
+                    if (task.deliveryDate) {
+                        if (!tasksByDate[task.deliveryDate]) {
+                            tasksByDate[task.deliveryDate] = [];
+                        }
+                        tasksByDate[task.deliveryDate].push(task);
+                    }
+                });
+
+                for (let i = 0; i < firstDayOfMonth; i++) {
+                    calendarGrid.innerHTML += `<div class="calendar-day other-month"></div>`;
+                }
+
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const dayTasks = tasksByDate[dateStr] || [];
+                    
+                    let taskDotsHtml = '<div class="task-dots">';
+                    dayTasks.slice(0, 9).forEach(task => {
+                        const statusColor = task.status === 'Completed' ? '#10B981' : (task.status === 'In Progress' ? '#F59E0B' : '#6B7280');
+                        taskDotsHtml += `<div class="task-dot" style="background-color: ${statusColor};"></div>`;
+                    });
+                    taskDotsHtml += '</div>';
+
+                    let tooltipHtml = `<div class="tooltip">`;
+                    if (dayTasks.length > 0) {
+                        dayTasks.forEach(task => {
+                            tooltipHtml += `<div>- ${task.fileName || 'Untitled'}</div>`;
+                        });
+                    } else {
+                        tooltipHtml += 'No deadlines';
+                    }
+                    tooltipHtml += `</div>`;
+
+                    calendarGrid.innerHTML += `
+                        <div class="calendar-day">
+                            <span class="day-number">${day}</span>
+                            ${taskDotsHtml}
+                            ${tooltipHtml}
+                        </div>`;
+                }
+            }
+
+            function setupCalendarHeaders() {
+                const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                calendarHeaders.innerHTML = days.map(day => `<div class="calendar-day-header">${day}</div>`).join('');
+            }
+
+            // --- ARCHIVE FUNCTIONS ---
+            function renderArchivedTasks(archivedTasks) {
+                archiveTableBody.innerHTML = '';
+                archivedTasks.forEach(task => {
+                    const newRow = archiveTableBody.insertRow();
+                    newRow.dataset.id = task.id;
+                    newRow.innerHTML = `
+                        <td class="table-cell">${task.fileName}</td>
+                        <td class="table-cell">${task.clientProject}</td>
+                        <td class="table-cell">${task.category}</td>
+                        <td class="table-cell">${task.status}</td>
+                        <td class="table-cell">${task.deliveryDate}</td>
+                        <td class="table-cell">
+                            <div class="flex flex-col gap-1">
+                                <button class="action-btn restore-btn text-xs">Restore</button>
+                                <button class="action-btn delete-btn text-xs">Delete</button>
+                            </div>
+                        </td>
+                    `;
+                });
+                toggleArchiveBtn.textContent = `Archived Tasks (${archivedTasks.length})`;
+            }
+
+            // --- IMPORT/EXPORT FUNCTIONS ---
+            function getFormattedDateTime() {
+                return new Date().toLocaleString('en-US', { 
+                    dateStyle: 'long', 
+                    timeStyle: 'short' 
+                });
+            }
+
+            function getTableDataForExport() {
+                const headers = ["S.N.", "File Name", "Client/Project", "Category", "Status", "Added Date", "Delivery Date", "Notes"];
+                const data = getTasksFromTable().map((task, index) => [index + 1, task.fileName, task.clientProject, task.category, task.status, task.addedDate, task.deliveryDate, task.notes]);
+                return { headers, data };
+            }
+
+            function getSummaryDataForExport() {
+                const headers = ["Category", "Total Tasks", "Done", "Left"];
+                const data = [];
+                const summaryData = countCategories(getTasksFromTable());
+                categories.forEach(cat => {
+                    const catData = summaryData[cat];
+                    data.push([cat, catData.total, catData.completed, catData.left]);
+                });
+                return { headers, data };
+            }
+
+            function exportToCSV() {
+                const dateTime = getFormattedDateTime();
+                const { headers: taskHeaders, data: taskData } = getTableDataForExport();
+                const { headers: summaryHeaders, data: summaryData } = getSummaryDataForExport();
+                
+                let csvContent = `Exported on:,"${dateTime}"\n\n`;
+                csvContent += taskHeaders.join(",") + "\n" + taskData.map(e => e.map(cell => `"${String(cell || '').replace(/"/g, '""')}"`).join(",")).join("\n");
+                csvContent += "\n\nCategory Summary\n" + summaryHeaders.join(",") + "\n" + summaryData.map(e => e.map(cell => `"${String(cell || '').replace(/"/g, '""')}"`).join(",")).join("\n");
+                triggerDownload("data:text/csv;charset=utf-8," + encodeURI(csvContent), "monthly_work_tracker.csv");
+            }
+
+            function exportToDoc() {
+                const dateTime = getFormattedDateTime();
+                const { headers: taskHeaders, data: taskData } = getTableDataForExport();
+                const { headers: summaryHeaders, data: summaryData } = getSummaryDataForExport();
+                let htmlContent = `<html><head><meta charset='utf-8'><title>Monthly Work Tracker</title></head><body><h1>Monthly Work Tracker</h1><p>Exported on: ${dateTime}</p><h2>Tasks</h2><table border="1" style="width:100%; border-collapse: collapse;"><thead><tr>${taskHeaders.map(h => `<th style="padding: 5px;">${h}</th>`).join('')}</tr></thead><tbody>${taskData.map(row => `<tr>${row.map(cell => `<td style="padding: 5px;">${cell || ''}</td>`).join('')}</tr>`).join('')}</tbody></table><br><h2>Category Summary</h2><table border="1" style="width:100%; border-collapse: collapse;"><thead><tr>${summaryHeaders.map(h => `<th style="padding: 5px;">${h}</th>`).join('')}</tr></thead><tbody>${summaryData.map(row => `<tr>${row.map(cell => `<td style="padding: 5px;">${cell || ''}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
+                triggerDownload('data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(htmlContent), "monthly_work_tracker.doc");
+            }
+
+            function exportToPDF() {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                const dateTime = getFormattedDateTime();
+                const { headers: taskHeaders, data: taskData } = getTableDataForExport();
+                const { headers: summaryHeaders, data: summaryData } = getSummaryDataForExport();
+                
+                doc.setFontSize(16);
+                doc.text("Monthly Work Tracker", 14, 16);
+                doc.setFontSize(10);
+                doc.text(`Exported on: ${dateTime}`, 14, 22);
+
+                doc.autoTable({ head: [taskHeaders], body: taskData, startY: 26 });
+                const finalY = doc.lastAutoTable.finalY;
+                doc.text("Category Summary", 14, finalY + 10);
+                doc.autoTable({ head: [summaryHeaders], body: summaryData, startY: finalY + 12 });
+                doc.save('monthly_work_tracker.pdf');
+            }
+            
+            function triggerDownload(uri, filename) {
+                const link = document.createElement("a");
+                link.setAttribute("href", uri);
+                link.setAttribute("download", filename);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+
+            function importFromCSV(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const text = e.target.result;
+                    const lines = text.split('\n').filter(line => line.trim() !== '');
+                    
+                    let taskHeaderIndex = -1;
+                    for(let i = 0; i < lines.length; i++) {
+                        if (lines[i].trim().replace(/"/g, '').startsWith('S.N.,File Name,Client/Project')) {
+                            taskHeaderIndex = i;
+                            break;
+                        }
+                    }
+
+                    if (taskHeaderIndex === -1) {
+                        alert("Could not find a valid task list in the CSV file. Make sure the header row (S.N.,File Name,...) is present.");
+                        event.target.value = '';
+                        return;
+                    }
+
+                    const importedTasks = [];
+                    for (let i = taskHeaderIndex + 1; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        if (line.toLowerCase().includes('category summary') || line === '') {
+                            break;
+                        }
+                        
+                        const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+
+                        if (values.length >= 8) { 
+                            const task = {
+                                fileName: values[1],
+                                clientProject: values[2],
+                                category: values[3],
+                                status: values[4],
+                                addedDate: values[5],
+                                deliveryDate: values[6],
+                                notes: values[7]
+                            };
+                            
+                            if (task.category && !categories.includes(task.category)) {
+                                categories.push(task.category);
+                                saveCategories();
+                            }
+                            importedTasks.push(task);
+                        }
+                    }
+                    
+                    if (importedTasks.length > 0) {
+                        importedTasks.forEach(task => createRow(task));
+                        saveAllTasks();
+                        updateAllCategoryDropdowns();
+                    } else {
+                        alert("No valid tasks found to import.");
+                    }
+                    
+                    event.target.value = ''; 
+                };
+                reader.readAsText(file);
+            }
+
+            // --- EVENT LISTENERS ---
+            addRowBtn.addEventListener('click', () => { createRow(); saveAllTasks(); });
+            clearDataBtn.addEventListener('click', () => {
+                if (confirm("Are you sure you want to delete all your tasks? This cannot be undone.")) {
+                    localStorage.removeItem(tasksStorageKey);
+                    localStorage.removeItem(archivedTasksStorageKey);
+                    loadAllTasks();
+                }
+            });
+            
+            taskTableBody.addEventListener('input', (e) => {
+                const target = e.target;
+                if (target.classList.contains('file-name-input') ||
+                    target.classList.contains('client-project-input') ||
+                    target.classList.contains('notes-textarea')) {
+                    target.title = target.value;
+                }
+                saveAllTasks();
+            });
+
+            taskTableBody.addEventListener('click', (e) => {
+                const target = e.target;
+                if (target.classList.contains('delete-btn') || target.classList.contains('archive-btn')) {
+                    const row = target.closest('tr');
+                    const taskId = row.dataset.id;
+                    let tasks = getTasksFromTable();
+                    const taskToProcess = tasks.find(t => t.id == taskId);
+                    
+                    tasks = tasks.filter(t => t.id != taskId);
+                    localStorage.setItem(tasksStorageKey, JSON.stringify(tasks));
+
+                    if (target.classList.contains('archive-btn')) {
+                        let archivedTasks = JSON.parse(localStorage.getItem(archivedTasksStorageKey)) || [];
+                        archivedTasks.push(taskToProcess);
+                        localStorage.setItem(archivedTasksStorageKey, JSON.stringify(archivedTasks));
+                    }
+                    
+                    loadAllTasks();
+                }
+            });
+
+            archiveTableBody.addEventListener('click', (e) => {
+                const target = e.target;
+                const row = target.closest('tr');
+                const taskId = row.dataset.id;
+                let archivedTasks = JSON.parse(localStorage.getItem(archivedTasksStorageKey)) || [];
+                const taskToProcess = archivedTasks.find(t => t.id == taskId);
+
+                archivedTasks = archivedTasks.filter(t => t.id != taskId);
+                localStorage.setItem(archivedTasksStorageKey, JSON.stringify(archivedTasks));
+
+                if (target.classList.contains('restore-btn')) {
+                    let tasks = getTasksFromTable();
+                    tasks.push(taskToProcess);
+                    localStorage.setItem(tasksStorageKey, JSON.stringify(tasks));
+                }
+                
+                loadAllTasks();
+            });
+
+            filterControls.addEventListener('click', (e) => {
+                if (e.target.classList.contains('filter-btn')) {
+                    currentFilter = e.target.dataset.filter;
+                    filterControls.querySelector('.active').classList.remove('active');
+                    e.target.classList.add('active');
+                    updateDashboard();
+                }
+            });
+            
+            chartTypeControls.addEventListener('click', (e) => {
+                if (e.target.classList.contains('chart-btn')) {
+                    currentChartType = e.target.dataset.chart;
+                    chartTypeControls.querySelector('.active').classList.remove('active');
+                    e.target.classList.add('active');
+                    updateDashboard();
+                }
+            });
+            
+            manageCategoriesBtn.addEventListener('click', () => {
+                renderCategoriesInModal();
+                categoryModal.classList.remove('hidden');
+            });
+            
+            closeModalBtn.addEventListener('click', () => {
+                categoryModal.classList.add('hidden');
+                updateAllCategoryDropdowns();
+                saveAllTasks();
+            });
+
+            addCategoryBtn.addEventListener('click', () => {
+                const newCat = newCategoryInput.value.trim();
+                if (newCat && !categories.includes(newCat)) {
+                    categories.push(newCat);
+                    saveCategories();
+                    renderCategoriesInModal();
+                    newCategoryInput.value = '';
+                }
+            });
+            
+            categoryList.addEventListener('click', (e) => {
+                if (e.target.tagName === 'BUTTON') {
+                    const catToDelete = e.target.dataset.category;
+                    categories = categories.filter(c => c !== catToDelete);
+                    saveCategories();
+                    renderCategoriesInModal();
+                }
+            });
+            
+            prevMonthBtn.addEventListener('click', () => {
+                currentDate.setMonth(currentDate.getMonth() - 1);
+                renderCalendar();
+            });
+            
+            nextMonthBtn.addEventListener('click', () => {
+                currentDate.setMonth(currentDate.getMonth() + 1);
+                renderCalendar();
+            });
+            
+            toggleArchiveBtn.addEventListener('click', () => {
+                archiveSection.classList.toggle('hidden');
+            });
+            
+            exportExcelBtn.addEventListener('click', exportToCSV);
+            exportDocBtn.addEventListener('click', exportToDoc);
+            exportPdfBtn.addEventListener('click', exportToPDF);
+            importFile.addEventListener('change', importFromCSV);
+
+            // --- INITIALIZATION ---
+            loadCategories();
+            loadAllTasks();
+            setupCalendarHeaders();
+        });
+    </script>
+</body>
+</html>
